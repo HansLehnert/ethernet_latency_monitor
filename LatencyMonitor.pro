@@ -35,6 +35,7 @@ HEADERS  += mainwindow.h \
     qcustomplot/qcustomplot.h \
     latencybarchart.h \
     latencylinechart.h \
-    serialmanager.h
+    serialmanager.h \
+    serialize.h
 
 FORMS    += mainwindow.ui

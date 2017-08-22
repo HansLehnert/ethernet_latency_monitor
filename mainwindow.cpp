@@ -5,6 +5,7 @@
 #include <QDebug>
 
 #include "networknode.h"
+#include "serialize.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -13,7 +14,36 @@ MainWindow::MainWindow(QWidget *parent) :
 	setWindowFlags(windowFlags() | Qt::MSWindowsFixedSizeDialogHint);
 	ui->setupUi(this);
 
-	serial_thread = new SerialManager();
+	//Hilo de ejecución para comunicacion serial
+	serial_thread = new QThread();
+	serial_manager.moveToThread(serial_thread);
+	connect(serial_thread, &QThread::started,
+	        &serial_manager, &SerialManager::run);
+	connect(&serial_manager, &SerialManager::start,
+	        [this](){ serial_thread->start(); });
+	connect(&serial_manager, &SerialManager::disconnected,
+	        serial_thread, &QThread::quit);
+	connect(qApp, &QCoreApplication::aboutToQuit,
+	        &serial_manager, &SerialManager::closePort);
+
+	//Configuración de timer para la actualización de datos del dispositivo
+	device_info_timer.setInterval(2000);
+	connect(&serial_manager, &SerialManager::connected,
+	        &device_info_timer, QOverload<>::of(&QTimer::start));
+	connect(&serial_manager, &SerialManager::disconnected,
+	        &device_info_timer, &QTimer::stop);
+	connect(&device_info_timer, &QTimer::timeout,
+	        this, &MainWindow::requestDeviceInfo);
+
+	bandwidth_timer.setInterval(100);
+	connect(&serial_manager, &SerialManager::connected,
+	        &bandwidth_timer, QOverload<>::of(&QTimer::start));
+	connect(&serial_manager, &SerialManager::disconnected,
+	        &bandwidth_timer, &QTimer::stop);
+	connect(&bandwidth_timer, &QTimer::timeout, [=] () {
+		serial_manager.queueCommand(NetworkNode::CMD_GET_BANDWIDTH_IN, {}, 4);
+		serial_manager.queueCommand(NetworkNode::CMD_GET_BANDWIDTH_OUT, {}, 4);
+	});
 
 	//Graficos
 	latency_bar_chart = new LatencyBarChart();
@@ -27,27 +57,44 @@ MainWindow::MainWindow(QWidget *parent) :
 
 	selectChart(ui->comboBox_chartType->currentIndex());
 
-	//Conexiones
-	connect(ui->pushButton_scan, SIGNAL(clicked(bool)), this, SLOT(scanPorts()));
-	connect(ui->pushButton_connect, SIGNAL(clicked(bool)), this, SLOT(connectPort()));
-	connect(ui->pushButton_log, SIGNAL(clicked(bool)), this, SLOT(controlLogger()));
+	//Botones
+	connect(ui->pushButton_scan, &QPushButton::clicked,
+	        this, &MainWindow::scanPorts);
+	connect(ui->pushButton_connect, &QPushButton::clicked,
+	        this, &MainWindow::connectPort);
+	connect(ui->pushButton_log, &QPushButton::clicked,
+	        this, &MainWindow::controlLogger);
 
-	connect(serial_thread, SIGNAL(connected(bool)), this, SLOT(portStatusChanged(bool)));
-	connect(serial_thread, SIGNAL(disconnected(bool)), this, SLOT(portStatusChanged(bool)));
+	//Conexión y desconexión de interfaz serial
+	connect(&serial_manager, &SerialManager::connected,
+	        this, &MainWindow::portStatusChanged);
+	connect(&serial_manager, &SerialManager::disconnected,
+	        this, &MainWindow::portStatusChanged);
 
-	connect(this, SIGNAL(requestDeviceInfo()), serial_thread, SLOT(scheduleCheckDevice()));
-	connect(serial_thread, SIGNAL(deviceRegisterUpdated(quint32, QVector<uchar>)), this, SLOT(deviceInfoUpdated(quint32, QVector<uchar>)));
+	//connect(this, SIGNAL(requestDeviceInfo()), serial_manager, SLOT(scheduleCheckDevice()));
+	connect(&serial_manager, &SerialManager::commandResponse,
+	        this, &MainWindow::deviceResponseReceived);
 
-	connect(ui->spinBox_packetSize, SIGNAL(valueChanged(int)), this, SLOT(updatePacketSize(int)));
-	connect(ui->spinBox_packetInterval, SIGNAL(valueChanged(int)), this, SLOT(updatePacketInterval(int)));
-	connect(ui->spinBox_dst, SIGNAL(valueChanged(int)), this, SLOT(updatePacketDst()));
-	connect(ui->checkBox_broadcast, SIGNAL(stateChanged(int)), this, SLOT(updatePacketDst()));
-	connect(ui->checkBox_content, SIGNAL(stateChanged(int)), this, SLOT(updatePacketContent()));
-	connect(ui->pushButton_content, SIGNAL(clicked(bool)), this, SLOT(loadPacketData()));
+	//Configuración del dispositivo
+	connect(ui->spinBox_packetInterval, QOverload<int>::of(&QSpinBox::valueChanged),
+	        [this] (int value) { serial_manager.queueCommand(NetworkNode::CMD_SET_PACKET_INTERVAL, serialize<ushort>(value), 0); });
+	connect(ui->spinBox_packetSize, QOverload<int>::of(&QSpinBox::valueChanged),
+	        [this] (int value) { serial_manager.queueCommand(NetworkNode::CMD_SET_PACKET_SIZE, serialize<ushort>(value), 0); });
+	connect(ui->spinBox_dst, QOverload<int>::of(&QSpinBox::valueChanged),
+	        this, &MainWindow::updatePacketDst);
+	connect(ui->checkBox_broadcast, &QCheckBox::stateChanged,
+	        this, &MainWindow::updatePacketDst);
+	connect(ui->checkBox_content, &QCheckBox::stateChanged,
+	        this, &MainWindow::updatePacketContent);
+	connect(ui->pushButton_content, &QPushButton::clicked,
+	        this, &MainWindow::loadPacketData);
 
-	connect(ui->comboBox_chartType, SIGNAL(currentIndexChanged(int)), this, SLOT(selectChart(int)));
+	connect(ui->comboBox_chartType, QOverload<int>::of(&QComboBox::currentIndexChanged),
+	        this, &MainWindow::selectChart);
 
-	connect(serial_thread, SIGNAL(newMeasurement(uint,uint,uint)), this, SLOT(measurementReceived(uint,uint,uint)));
+	//Notificación de mediciones
+	connect(&serial_manager, &SerialManager::newMeasurement,
+	        this, &MainWindow::measurementReceived);
 }
 
 MainWindow::~MainWindow()
@@ -71,7 +118,7 @@ void MainWindow::connectPort()
 {
 	QString port_name = ui->comboBox_port->currentText();
 	quint32 baudrate = ui->lineEdit_baudrate->text().toInt();
-	serial_thread->openPort(port_name, baudrate);
+	serial_manager.openPort(port_name, baudrate);
 }
 
 //Habilita/deshabilita widgets dependiendo del estado de conexion con el dispositivo
@@ -94,7 +141,7 @@ void MainWindow::portStatusChanged(bool connected)
 		ui->pushButton_connect->setText("Desconectar");
 
 		//Pedir informacion del dispositivo para actualizar interfaz
-		emit requestDeviceInfo();
+		requestDeviceInfo();
 	}
 	else
 	{
@@ -103,34 +150,31 @@ void MainWindow::portStatusChanged(bool connected)
 }
 
 //Actulaizar interfaz al recibir lecturas de los registros del dispositivo
-void MainWindow::deviceInfoUpdated(quint32 device_register, QVector<uchar> data)
+void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uchar> data)
 {
 	QString text;
 	qint64 value;
 
-	switch (device_register) {
-	case NetworkNode::REGISTER_ID:
+	switch (command) {
+	case NetworkNode::CMD_GET_ID:
 		text = QString::number(data[0]);
 		ui->label_id_right->setText(text);
 		break;
 
-	case NetworkNode::REGISTER_VERSION:
+	case NetworkNode::CMD_GET_VERSION:
 		text = QString::number(data[0]) + "." +
 		       QString::number(data[1]);
 		ui->label_version_right->setText(text);
 		break;
 
-	case NetworkNode::REGISTER_PRECISION:
-		value = (data[0] << 24) +
-		        (data[1] << 16) +
-		        (data[2] << 8) +
-		        data[3];
+	case NetworkNode::CMD_GET_PRECISION:
+		value = deserialize<uint>(data);
 		device_precision = value != 0 ? 1000000000 / value : -1;
 		text = QString::number(device_precision) + " ns";
 		ui->label_precision_right->setText(text);
 		break;
 
-	case NetworkNode::REGISTER_MAC_ADDRESS:
+	case NetworkNode::CMD_GET_MAC_ADDRESS:
 		text = QString("%1").arg(data[0], 2, 16, QChar('0')) + ":" +
 		       QString("%1").arg(data[1], 2, 16, QChar('0')) + ":" +
 		       QString("%1").arg(data[2], 2, 16, QChar('0')) + ":" +
@@ -140,51 +184,39 @@ void MainWindow::deviceInfoUpdated(quint32 device_register, QVector<uchar> data)
 		ui->label_mac_right->setText(text);
 		break;
 
-	case NetworkNode::REGISTER_PACKET_SIZE:
-		value = (data[0] << 8) + data[1];
+	case NetworkNode::CMD_GET_PACKET_SIZE:
+		value = deserialize<ushort>(data);
 		ui->spinBox_packetSize->setValue(value);
 		break;
 
-	case NetworkNode::REGISTER_PACKET_INTERVAL:
-		value = (data[0] << 8) + data[1];
+	case NetworkNode::CMD_GET_PACKET_INTERVAL:
+		value = deserialize<ushort>(data);
 		ui->spinBox_packetInterval->setValue(value);
 		break;
 
-	case NetworkNode::REGISTER_PACKET_DST:
-		if (data[0] == 0xFF)
-		{
+	case NetworkNode::CMD_GET_PACKET_DST:
+		if (data[0] == 0xFF) {
 			ui->checkBox_broadcast->setChecked(true);
 		}
-		else
-		{
+		else {
 			ui->checkBox_broadcast->setChecked(false);
 		}
 		break;
 
-	case NetworkNode::REGISTER_CUSTOM_PACKET:
+	case NetworkNode::CMD_GET_CUSTOM_PACKET:
 		ui->checkBox_content->setChecked(data[0] == 0x01);
+		break;
+
+	case NetworkNode::CMD_GET_BANDWIDTH_IN:
+		ui->label_bandwidth_in_bottom->setText(QString::number(deserialize<uint>(data)));
+		break;
+
+	case NetworkNode::CMD_GET_BANDWIDTH_OUT:
+		ui->label_bandwidth_out_bottom->setText(QString::number(deserialize<uint>(data)));
+		break;
 	}
 }
 
-//Reconfigurar dispositivo con nuevo largo de paquete
-void MainWindow::updatePacketSize(int new_value)
-{
-	unsigned char data[2];
-	data[0] = ((quint32) new_value) >> 8;
-	data[1] = ((quint32) new_value);
-
-	serial_thread->queueCommand(NetworkNode::CMD_SET_PACKET_SIZE, (char*) data, 2);
-}
-
-//Reconfigurar dispositivo con nuevo intervalo entre paquetes
-void MainWindow::updatePacketInterval(int new_value)
-{
-	unsigned char data[2];
-	data[0] = ((quint32) new_value) >> 8;
-	data[1] = ((quint32) new_value);
-
-	serial_thread->queueCommand(NetworkNode::CMD_SET_PACKET_INTERVAL, (char*) data, 2);
-}
 
 //Reconfigurar dispositivo con nuevo destino de paquetes
 //Habilita/deshabilita widgets en caso de seleccionar opcion 'broadcast'
@@ -203,8 +235,9 @@ void MainWindow::updatePacketDst()
 		dst = ui->spinBox_dst->value();
 	}
 
-	serial_thread->queueCommand(NetworkNode::CMD_SET_PACKET_DST, (char*)&dst, 1);
+	serial_manager.queueCommand(NetworkNode::CMD_SET_PACKET_DST, {dst}, 0);
 }
+
 
 //Habilita/deshabilita paquetes personalizados
 void MainWindow::updatePacketContent()
@@ -213,33 +246,50 @@ void MainWindow::updatePacketContent()
 
 	ui->pushButton_content->setEnabled(custom_packet);
 
-	serial_thread->queueCommand(NetworkNode::CMD_SET_CUSTOM_PACKET, (char*)&custom_packet, 1);
+	serial_manager.queueCommand(NetworkNode::CMD_SET_CUSTOM_PACKET, {custom_packet}, 0);
 }
+
+
+//Realiza la lectura de los registros del dispositivo
+void MainWindow::requestDeviceInfo() {
+	serial_manager.queueCommand(NetworkNode::CMD_GET_ID, {}, 1);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_VERSION, {}, 2);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_PRECISION, {}, 4);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_MAC_ADDRESS, {}, 6);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_PACKET_SIZE, {}, 2);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_PACKET_INTERVAL, {}, 2);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_PACKET_DST, {}, 1);
+	serial_manager.queueCommand(NetworkNode::CMD_GET_CUSTOM_PACKET, {}, 1);
+}
+
 
 //Carga datos de paquetes personalizados al dispositivo
 void MainWindow::loadPacketData()
 {
-	QString filename = QFileDialog::getOpenFileName(this,
-	                                                tr("Seleccionar archivo fuente"));
+	QString filename = QFileDialog::getOpenFileName(this, tr("Seleccionar archivo fuente"));
 
 	QFile in_file(filename);
 
 	if (in_file.open(QIODevice::ReadOnly))
 	{
-		uchar payload[1516];
+		SerialManager::Command command;
+		command.command = NetworkNode::Command::CMD_LOAD_CUSTOM_DATA;
+		command.response_length = 0;
 
 		int filesize = in_file.size();
 		if (filesize > 1514)
 		{
-			filesize = 1524;
+			filesize = 1514;
 		}
 
-		payload[0] = filesize >> 8 & 0xFF;
-		payload[1] = filesize & 0xFF;
+		command.data.resize(filesize + 2);
 
-		in_file.read((char*)payload + 2, filesize);
+		command.data[0] = filesize >> 8 & 0xFF;
+		command.data[1] = filesize & 0xFF;
 
-		serial_thread->queueCommand(NetworkNode::CMD_LOAD_CUSTOM_DATA, (char*)payload, filesize + 2);
+		in_file.read(reinterpret_cast<char*>(&command.data[2]), filesize);
+
+		serial_manager.queueCommand(command);
 	}
 }
 

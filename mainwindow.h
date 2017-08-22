@@ -2,6 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QThread>
+#include <QTimer>
 
 #include "serialmanager.h"
 #include "latencybarchart.h"
@@ -22,7 +24,12 @@ public:
 private:
 	Ui::MainWindow *ui;
 
-	SerialManager* serial_thread;
+	SerialManager serial_manager;
+	QThread* serial_thread;
+
+	//Timer para actualización de datos del dispositivo
+	QTimer device_info_timer;
+	QTimer bandwidth_timer;
 
 	//Graficos
 	LatencyBarChart* latency_bar_chart;
@@ -43,20 +50,17 @@ private:
 	};
 	QVector<Measurement> log_data;
 
-signals:
-	void requestDeviceInfo();
-
 public slots:
 	void scanPorts();
 	void connectPort();
 	void portStatusChanged(bool);
-	void deviceInfoUpdated(quint32, QVector<uchar>);
+	void deviceResponseReceived(NetworkNode::Command, QVector<uchar>);
 
-	void updatePacketSize(int);
-	void updatePacketInterval(int);
 	void updatePacketDst();
 	void updatePacketContent();
 	void loadPacketData();
+
+	void requestDeviceInfo();
 
 	void controlLogger();
 

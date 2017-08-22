@@ -33,7 +33,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>0</number>
     </property>
     <widget class="QWidget" name="tab_device">
      <attribute name="title">
@@ -57,7 +57,7 @@
          <x>10</x>
          <y>20</y>
          <width>361</width>
-         <height>51</height>
+         <height>54</height>
         </rect>
        </property>
        <layout class="QGridLayout" name="gridLayout_connection" columnminimumwidth="100,0,0">

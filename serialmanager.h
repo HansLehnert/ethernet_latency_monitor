@@ -1,33 +1,33 @@
-#ifndef SERIALTHREAD_H
-#define SERIALTHREAD_H
+#ifndef SERIALMANAGER_H
+#define SERIALMANAGER_H
 
-#include <QThread>
 #include <QSerialPort>
 #include <QTimer>
 #include <QMutex>
 #include <QVector>
 
-class SerialThread : public QThread
+#include "networknode.h"
+
+class SerialManager : public QObject
 {
 	Q_OBJECT
 
 public:
-	SerialThread();
-	void run() Q_DECL_OVERRIDE;
+	SerialManager();
+
+	struct Command {
+		NetworkNode::Command command;
+		QVector<uchar> data;
+		uint response_length;
+	};
 
 private:
-	QTimer refresh_timer;
-
 	//Puerto Serial
 	QSerialPort* serial_port;
 	QString port_name;
 	qint32 baudrate;
 
 	//Cola de Comandos
-	struct Command {
-		uchar command;
-		QVector<uchar> data;
-	};
 	QList<Command> command_queue;
 	QMutex command_queue_mutex;
 
@@ -35,10 +35,10 @@ private:
 	bool should_exit;
 	bool check_device_flag;
 
-	void checkDevice();
+	//void checkDevice();
 	//Revisa todos los registros del dispositivo
 
-	bool sendCommand(char, char*, quint32, char* = nullptr, quint32 = 0);
+	bool sendCommand(Command, QVector<uchar>* = nullptr);
 	//Envía un comando al dispositivo, junto con datos asociados
 	//y recibe una respuesta. Los tamaños de los datos enviados y recibidos
 	//deben ser previamente conocidos
@@ -54,21 +54,26 @@ signals:
 	void disconnected(bool = false);
 	//Emitida al cerrarse el puerto serial
 
-	void deviceRegisterUpdated(quint32, QVector<uchar>);
+	void start();
+	//Emitida para indicar que se debe comenzar el hilo de ejecución
+
+	void commandResponse(NetworkNode::Command, QVector<uchar>);
 	//Emitida tras la lectura de un registro
 
 	void newMeasurement(uint, uint, uint);
 
 public slots:
+	void run();
+
 	void openPort(QString&, qint32);
-	//Slot para inicio de la conexión
+	//Slot para inicio y fin de la conexión
 
-	void scheduleCheckDevice();
-	//Revisar los valores de los registros
+	void closePort();
+	//Para cerrar la conexión
 
-	void queueCommand(char, const char*, quint32);
-	//Poner un comando en la cola
-
+	void queueCommand(Command);
+	void queueCommand(NetworkNode::Command, QVector<uchar>, uint);
+	//Agregar un comando a la cola
 };
 
 #endif // SERIALTHREAD_H
