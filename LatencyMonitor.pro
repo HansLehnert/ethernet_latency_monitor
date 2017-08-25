@@ -28,7 +28,8 @@ SOURCES += main.cpp\
     qcustomplot/qcustomplot.cpp \
     latencybarchart.cpp \
     latencylinechart.cpp \
-    serialmanager.cpp
+    serialmanager.cpp \
+    utils.cpp
 
 HEADERS  += mainwindow.h \
     networknode.h \
@@ -36,6 +37,7 @@ HEADERS  += mainwindow.h \
     latencybarchart.h \
     latencylinechart.h \
     serialmanager.h \
-    serialize.h
+    serialize.h \
+    utils.h
 
 FORMS    += mainwindow.ui

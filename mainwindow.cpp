@@ -6,6 +6,7 @@
 
 #include "networknode.h"
 #include "serialize.h"
+#include "utils.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -170,7 +171,7 @@ void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uc
 	case NetworkNode::CMD_GET_PRECISION:
 		value = deserialize<uint>(data);
 		device_precision = value != 0 ? 1000000000 / value : -1;
-		text = QString::number(device_precision) + " ns";
+		text = metricPrefix(1 / double(value)) + "s";
 		ui->label_precision_right->setText(text);
 		break;
 
@@ -208,11 +209,11 @@ void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uc
 		break;
 
 	case NetworkNode::CMD_GET_BANDWIDTH_IN:
-		ui->label_bandwidth_in_bottom->setText(QString::number(deserialize<uint>(data)));
+		ui->label_bandwidth_in_bottom->setText(metricPrefix(deserialize<uint>(data) / 0.1) + "B/s");
 		break;
 
 	case NetworkNode::CMD_GET_BANDWIDTH_OUT:
-		ui->label_bandwidth_out_bottom->setText(QString::number(deserialize<uint>(data)));
+		ui->label_bandwidth_out_bottom->setText(metricPrefix(deserialize<uint>(data) / 0.1) + "B/s");
 		break;
 	}
 }
