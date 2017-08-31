@@ -7,7 +7,7 @@
 
 #include "serialmanager.h"
 #include "latencybarchart.h"
-#include "latencylinechart.h"
+#include "timechart.h"
 
 namespace Ui {
 class MainWindow;
@@ -27,13 +27,15 @@ private:
 	SerialManager serial_manager;
 	QThread* serial_thread;
 
-	//Timer para actualización de datos del dispositivo
+	//TimerS
 	QTimer device_info_timer;
 	QTimer bandwidth_timer;
+	QTimer replot_timer;
 
 	//Graficos
 	LatencyBarChart* latency_bar_chart;
-	LatencyLineChart* latency_line_chart;
+	TimeChart* latency_time_chart;
+	TimeChart* bandwidth_time_chart;
 
 	//Datos del dispositivo
 	uint device_precision = 8;
@@ -49,6 +51,10 @@ private:
 		int sequence;
 	};
 	QVector<Measurement> log_data;
+
+	//Perdida de paquetes
+	long last_seq = -1;
+	long lost_packets = 0;
 
 public slots:
 	void scanPorts();

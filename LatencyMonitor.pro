@@ -26,18 +26,18 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += main.cpp\
         mainwindow.cpp \
     qcustomplot/qcustomplot.cpp \
-    latencybarchart.cpp \
-    latencylinechart.cpp \
     serialmanager.cpp \
-    utils.cpp
+    utils.cpp \
+    timechart.cpp \
+    latencybarchart.cpp
 
 HEADERS  += mainwindow.h \
     networknode.h \
     qcustomplot/qcustomplot.h \
     latencybarchart.h \
-    latencylinechart.h \
     serialmanager.h \
     serialize.h \
-    utils.h
+    utils.h \
+    timechart.h
 
 FORMS    += mainwindow.ui

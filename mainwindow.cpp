@@ -36,7 +36,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	connect(&device_info_timer, &QTimer::timeout,
 	        this, &MainWindow::requestDeviceInfo);
 
-	bandwidth_timer.setInterval(100);
+	bandwidth_timer.setInterval(50);
 	connect(&serial_manager, &SerialManager::connected,
 	        &bandwidth_timer, QOverload<>::of(&QTimer::start));
 	connect(&serial_manager, &SerialManager::disconnected,
@@ -48,10 +48,30 @@ MainWindow::MainWindow(QWidget *parent) :
 
 	//Graficos
 	latency_bar_chart = new LatencyBarChart();
-	latency_line_chart = new LatencyLineChart();
+	latency_time_chart = new TimeChart(16);
+	bandwidth_time_chart = new TimeChart(2);
+	bandwidth_time_chart->legend->setVisible(true);
+	//qobject_cast<QCPPlottableLegendItem*>(bandwidth_time_chart->legend->item(0))->plottable()->setName("Hola");
+	bandwidth_time_chart->graph(0)->setName("Entrada");
+	bandwidth_time_chart->graph(1)->setName("Salida");
+	bandwidth_time_chart->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft|Qt::AlignTop);
 
-	ui->verticalLayout_chart->addWidget(latency_line_chart);
-	ui->verticalLayout_chart->addWidget(latency_bar_chart);
+	ui->verticalLayout_chart_latency->addWidget(latency_time_chart);
+	ui->verticalLayout_chart_latency->addWidget(latency_bar_chart);
+	ui->verticalLayout_chart_bandwidth->addWidget(bandwidth_time_chart);
+
+	replot_timer.setInterval(1000 / 30);
+	replot_timer.start();
+	connect(&replot_timer, &QTimer::timeout, [=] () {
+		if (latency_time_chart->isVisible()) {
+			latency_time_chart->replot(QCustomPlot::rpQueuedReplot);
+		}
+	});
+	connect(&replot_timer, &QTimer::timeout, [=] () {
+		if (bandwidth_time_chart->isVisible()) {
+			bandwidth_time_chart->replot(QCustomPlot::rpQueuedReplot);
+		}
+	});
 
 	ui->comboBox_chartType->addItem("Barras");
 	ui->comboBox_chartType->addItem("Líneas");
@@ -98,14 +118,14 @@ MainWindow::MainWindow(QWidget *parent) :
 	        this, &MainWindow::measurementReceived);
 }
 
-MainWindow::~MainWindow()
-{
+
+MainWindow::~MainWindow() {
 	delete ui;
 }
 
+
 //Revisa los puertos seriales disponibles en el equipo al presionar el boton correspondiente
-void MainWindow::scanPorts()
-{
+void MainWindow::scanPorts() {
 	QList<QSerialPortInfo> port_list = QSerialPortInfo::availablePorts();
 
 	ui->comboBox_port->clear();
@@ -114,17 +134,17 @@ void MainWindow::scanPorts()
 	}
 }
 
+
 //Señala la apertura del puerto serial al hilo correspondiente
-void MainWindow::connectPort()
-{
+void MainWindow::connectPort() {
 	QString port_name = ui->comboBox_port->currentText();
 	quint32 baudrate = ui->lineEdit_baudrate->text().toInt();
 	serial_manager.openPort(port_name, baudrate);
 }
 
+
 //Habilita/deshabilita widgets dependiendo del estado de conexion con el dispositivo
-void MainWindow::portStatusChanged(bool connected)
-{
+void MainWindow::portStatusChanged(bool connected) {
 	ui->pushButton_scan->setEnabled(!connected);
 	ui->comboBox_port->setEnabled(!connected);
 	ui->label_id_right->setEnabled(connected);
@@ -150,9 +170,9 @@ void MainWindow::portStatusChanged(bool connected)
 	}
 }
 
+
 //Actulaizar interfaz al recibir lecturas de los registros del dispositivo
-void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uchar> data)
-{
+void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uchar> data) {
 	QString text;
 	qint64 value;
 
@@ -209,11 +229,15 @@ void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uc
 		break;
 
 	case NetworkNode::CMD_GET_BANDWIDTH_IN:
-		ui->label_bandwidth_in_bottom->setText(metricPrefix(deserialize<uint>(data) / 0.1) + "B/s");
+		value = deserialize<uint>(data) * 8 * 10;
+		ui->label_bandwidth_in_bottom->setText(metricPrefix(value) + "b/s");
+		bandwidth_time_chart->addData(0, value);
 		break;
 
 	case NetworkNode::CMD_GET_BANDWIDTH_OUT:
-		ui->label_bandwidth_out_bottom->setText(metricPrefix(deserialize<uint>(data) / 0.1) + "B/s");
+		value = deserialize<uint>(data) * 8 * 10;
+		ui->label_bandwidth_out_bottom->setText(metricPrefix(value) + "b/s");
+		bandwidth_time_chart->addData(1, value);
 		break;
 	}
 }
@@ -221,8 +245,7 @@ void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uc
 
 //Reconfigurar dispositivo con nuevo destino de paquetes
 //Habilita/deshabilita widgets en caso de seleccionar opcion 'broadcast'
-void MainWindow::updatePacketDst()
-{
+void MainWindow::updatePacketDst() {
 	unsigned char dst;
 
 	if (ui->checkBox_broadcast->isChecked())
@@ -241,8 +264,7 @@ void MainWindow::updatePacketDst()
 
 
 //Habilita/deshabilita paquetes personalizados
-void MainWindow::updatePacketContent()
-{
+void MainWindow::updatePacketContent() {
 	unsigned char custom_packet = ui->checkBox_content->isChecked();
 
 	ui->pushButton_content->setEnabled(custom_packet);
@@ -265,8 +287,7 @@ void MainWindow::requestDeviceInfo() {
 
 
 //Carga datos de paquetes personalizados al dispositivo
-void MainWindow::loadPacketData()
-{
+void MainWindow::loadPacketData() {
 	QString filename = QFileDialog::getOpenFileName(this, tr("Seleccionar archivo fuente"));
 
 	QFile in_file(filename);
@@ -294,9 +315,9 @@ void MainWindow::loadPacketData()
 	}
 }
 
+
 //Control del registro de mediciones
-void MainWindow::controlLogger()
-{
+void MainWindow::controlLogger() {
 	log_status = !log_status;
 
 	ui->label_dataCount_right->setEnabled(log_status);
@@ -341,12 +362,13 @@ void MainWindow::controlLogger()
 	}
 }
 
+
 //Activa y desactiva graficos
-void MainWindow::selectChart(int index)
-{
+void MainWindow::selectChart(int index) {
 	latency_bar_chart->setActive(index == 0);
-	latency_line_chart->setActive(index == 1);
+	latency_time_chart->setVisible(index == 1);
 }
+
 
 //Manejo de nuevas mediciones
 void MainWindow::measurementReceived(uint value, uint sequence, uint node)
@@ -357,7 +379,7 @@ void MainWindow::measurementReceived(uint value, uint sequence, uint node)
 
 	//ui->statusBar->showMessage(status);
 	latency_bar_chart->updateLatency(value * device_precision, sequence, node);
-	latency_line_chart->updateLatency(value * device_precision, sequence, node);
+	latency_time_chart->addData(node, (double)(value * device_precision));
 
 	if (log_status)
 	{
@@ -371,4 +393,13 @@ void MainWindow::measurementReceived(uint value, uint sequence, uint node)
 
 		ui->label_dataCount_right->setText(QString::number(log_data.length()));
 	}
+
+	if (last_seq != -1)
+		lost_packets += sequence - last_seq - 1;
+	last_seq = sequence;
+
+	QString status = "Paquetes perdidos " +
+	                 QString::number(lost_packets);
+
+	ui->statusBar->showMessage(status);
 }
