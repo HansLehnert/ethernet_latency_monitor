@@ -52,7 +52,7 @@ void SerialManager::run() {
 			sendQuery(query_queue[0], &response);
 
 			if (response.length() > 0)
-				emit commandResponse(query_queue[0].command, response);
+				emit queryResponse(query_queue[0].command, response);
 			query_queue.pop_front();
 		}
 		query_queue_mutex.unlock();

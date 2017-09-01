@@ -6,6 +6,7 @@
 #include <QTimer>
 
 #include "serialmanager.h"
+#include "bandwidthmonitor.h"
 #include "latencybarchart.h"
 #include "timechart.h"
 
@@ -29,7 +30,6 @@ private:
 
 	//Timers
 	QTimer device_info_timer;
-	QTimer bandwidth_timer;
 	QTimer replot_timer;
 
 	//Graficos
@@ -39,6 +39,9 @@ private:
 
 	//Datos del dispositivo
 	uint device_precision = 8;
+
+	//Monitor de ancho de banda
+	BandwidthMonitor bandwidth_monitor;
 
 	//Logger
 	QTime log_time;

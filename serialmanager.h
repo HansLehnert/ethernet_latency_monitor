@@ -51,7 +51,7 @@ signals:
 	void start();
 	//Emitida para indicar que se debe comenzar el hilo de ejecución
 
-	void commandResponse(NetworkNode::Command, QVector<uchar>);
+	void queryResponse(NetworkNode::Command, QVector<uchar>);
 	//Emitida tras la lectura de un registro
 
 	void newMeasurement(uint, uint, uint);

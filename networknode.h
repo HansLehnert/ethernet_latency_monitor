@@ -1,6 +1,8 @@
 #ifndef NETWORKNODE_H
 #define NETWORKNODE_H
 
+#include <QVector>
+
 namespace NetworkNode {
 
 	enum Register

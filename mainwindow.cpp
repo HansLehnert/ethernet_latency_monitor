@@ -36,15 +36,20 @@ MainWindow::MainWindow(QWidget *parent) :
 	connect(&device_info_timer, &QTimer::timeout,
 	        this, &MainWindow::requestDeviceInfo);
 
-	bandwidth_timer.setInterval(50);
+	//Monitor de ancho de banda
+	connect(&bandwidth_monitor, &BandwidthMonitor::requestMeasurement,
+	        &serial_manager, QOverload<NetworkNode::Command, QVector<uchar>, uint>::of(&SerialManager::queueQuery),
+	        Qt::DirectConnection);
 	connect(&serial_manager, &SerialManager::connected,
-	        &bandwidth_timer, QOverload<>::of(&QTimer::start));
+	        &bandwidth_monitor, &BandwidthMonitor::start);
 	connect(&serial_manager, &SerialManager::disconnected,
-	        &bandwidth_timer, &QTimer::stop);
-	connect(&bandwidth_timer, &QTimer::timeout, [=] () {
-		serial_manager.queueQuery(NetworkNode::CMD_GET_BYTES_IN, {}, 4);
-		serial_manager.queueQuery(NetworkNode::CMD_GET_BYTES_OUT, {}, 4);
-	});
+	        &bandwidth_monitor, &BandwidthMonitor::stop);
+	connect(&serial_manager, &SerialManager::queryResponse,
+	        &bandwidth_monitor, &BandwidthMonitor::getMeasurement);
+	connect(&bandwidth_monitor, &BandwidthMonitor::inMeasurement,
+	        [=] (double value) {bandwidth_time_chart->addData(0, value);});
+	connect(&bandwidth_monitor, &BandwidthMonitor::outMeasurement,
+	        [=] (double value) {bandwidth_time_chart->addData(1, value);});
 
 	//Graficos
 	latency_bar_chart = new LatencyBarChart();
@@ -91,8 +96,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	connect(&serial_manager, &SerialManager::disconnected,
 	        this, &MainWindow::portStatusChanged);
 
-	//connect(this, SIGNAL(requestDeviceInfo()), serial_manager, SLOT(scheduleCheckDevice()));
-	connect(&serial_manager, &SerialManager::commandResponse,
+	connect(&serial_manager, &SerialManager::queryResponse,
 	        this, &MainWindow::deviceResponseReceived);
 
 	//Configuración del dispositivo
@@ -225,18 +229,6 @@ void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uc
 
 	case NetworkNode::CMD_GET_CUSTOM_PACKET:
 		ui->checkBox_content->setChecked(data[0] == 0x01);
-		break;
-
-	case NetworkNode::CMD_GET_BYTES_IN:
-		value = deserialize<uint>(data) * 8 * 10;
-		ui->label_bandwidth_in_bottom->setText(metricPrefix(value) + "b/s");
-		bandwidth_time_chart->addData(0, value);
-		break;
-
-	case NetworkNode::CMD_GET_BYTES_OUT:
-		value = deserialize<uint>(data) * 8 * 10;
-		ui->label_bandwidth_out_bottom->setText(metricPrefix(value) + "b/s");
-		bandwidth_time_chart->addData(1, value);
 		break;
 	}
 }
