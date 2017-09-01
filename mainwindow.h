@@ -27,7 +27,7 @@ private:
 	SerialManager serial_manager;
 	QThread* serial_thread;
 
-	//TimerS
+	//Timers
 	QTimer device_info_timer;
 	QTimer bandwidth_timer;
 	QTimer replot_timer;

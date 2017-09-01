@@ -11,8 +11,6 @@ public:
 	LatencyBarChart();
 
 private:
-	QTimer replot_timer;
-
 	QCPBars* bars_latency[16];
 
 	QVector<QCPBarsData> last_latency;
@@ -26,7 +24,7 @@ private:
 	float yrange_target;
 
 public slots:
-	void updateLatency(uint, uint, uint);
+	void addData(uint, uint, uint);
 	void updateData();
 	void setActive(bool);
 };

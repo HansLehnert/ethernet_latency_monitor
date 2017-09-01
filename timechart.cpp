@@ -43,7 +43,8 @@ void TimeChart::setDataChannels(int channels) {
 
 
 void TimeChart::addData(uint channel, double value) {
-	graph(channel)->addData(measure_time.elapsed() / 1000.0, value);
+	if (channel < n_channels)
+		graph(channel)->addData(measure_time.elapsed() / 1000.0, value);
 }
 
 

@@ -29,15 +29,17 @@ SOURCES += main.cpp\
     serialmanager.cpp \
     utils.cpp \
     timechart.cpp \
-    latencybarchart.cpp
+    latencybarchart.cpp \
+    bandwidthmonitor.cpp
 
 HEADERS  += mainwindow.h \
     networknode.h \
     qcustomplot/qcustomplot.h \
-    latencybarchart.h \
     serialmanager.h \
     serialize.h \
     utils.h \
-    timechart.h
+    timechart.h \
+    latencybarchart.h \
+    bandwidthmonitor.h
 
 FORMS    += mainwindow.ui

@@ -2,12 +2,6 @@
 
 LatencyBarChart::LatencyBarChart()
 {
-	//Timer para redibujar grafico
-	replot_timer.setInterval(1000 / 30);
-	replot_timer.setSingleShot(false);
-	replot_timer.start();
-	connect(&replot_timer, SIGNAL(timeout()), this, SLOT(replot()));
-
 	//Inicializar datos
 	QVector<double> ticks;
 	QVector<QString> labels;
@@ -56,18 +50,20 @@ LatencyBarChart::LatencyBarChart()
 	connect(this, SIGNAL(beforeReplot()), this, SLOT(updateData()));
 }
 
-void LatencyBarChart::updateLatency(uint value, uint sequence, uint node)
+void LatencyBarChart::addData(uint value, uint sequence, uint node)
 {
-	last_latency_target[node].value = (double)value;
-	node_sequence[node] = sequence;
+	if (node < 16) {
+		last_latency_target[node].value = (double)value;
+		node_sequence[node] = sequence;
 
-	last_sequence = sequence;
+		last_sequence = sequence;
 
-	yrange_target = value > yrange_target ? value : yrange_target;
+		yrange_target = value > yrange_target ? value : yrange_target;
+	}
 }
 
-void LatencyBarChart::updateData()
-{
+
+void LatencyBarChart::updateData() {
 	for (int i = 0; i < 16; i++)
 	{
 		last_latency[i].value = last_latency[i].value * 0.8 +
@@ -84,21 +80,14 @@ void LatencyBarChart::updateData()
 	yAxis->setRange(0, yrange);
 }
 
-void LatencyBarChart::setActive(bool active)
-{
+
+void LatencyBarChart::setActive(bool active) {
 	setVisible(active);
 
-	if (active)
-	{
-		replot_timer.start();
-		for (int i = 0; i < 16; i++)
-		{
+	if (active) {
+		for (int i = 0; i < 16; i++) {
 			last_latency[i].value = 0;
 			last_latency_target[i].value = 0;
 		}
-	}
-	else
-	{
-		replot_timer.stop();
 	}
 }

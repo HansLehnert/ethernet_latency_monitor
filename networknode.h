@@ -28,8 +28,8 @@ namespace NetworkNode {
 		CMD_GET_PACKET_INTERVAL = 0x05,
 		CMD_GET_PACKET_DST      = 0x06,
 		CMD_GET_CUSTOM_PACKET   = 0x07,
-		CMD_GET_BANDWIDTH_IN    = 0x08,
-		CMD_GET_BANDWIDTH_OUT   = 0x09,
+		CMD_GET_BYTES_IN        = 0x08,
+		CMD_GET_BYTES_OUT       = 0x09,
 
 		CMD_SET_PACKET_SIZE     = 0x44,
 		CMD_SET_PACKET_INTERVAL = 0x45,
@@ -39,6 +39,12 @@ namespace NetworkNode {
 		CMD_LOAD_CUSTOM_DATA    = 0x87,
 
 		CMD_MEASUREMENTS        = 0xC0
+	};
+
+	struct Query {
+		NetworkNode::Command command;
+		QVector<uchar> data;
+		uint response_length;
 	};
 
 }

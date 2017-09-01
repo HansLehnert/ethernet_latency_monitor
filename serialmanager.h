@@ -15,12 +15,6 @@ class SerialManager : public QObject
 public:
 	SerialManager();
 
-	struct Command {
-		NetworkNode::Command command;
-		QVector<uchar> data;
-		uint response_length;
-	};
-
 private:
 	//Puerto Serial
 	QSerialPort* serial_port;
@@ -28,8 +22,8 @@ private:
 	qint32 baudrate;
 
 	//Cola de Comandos
-	QList<Command> command_queue;
-	QMutex command_queue_mutex;
+	QList<NetworkNode::Query> query_queue;
+	QMutex query_queue_mutex;
 
 	//Banderas
 	bool should_exit;
@@ -38,7 +32,7 @@ private:
 	//void checkDevice();
 	//Revisa todos los registros del dispositivo
 
-	bool sendCommand(Command, QVector<uchar>* = nullptr);
+	bool sendQuery(NetworkNode::Query, QVector<uchar>* = nullptr);
 	//Envía un comando al dispositivo, junto con datos asociados
 	//y recibe una respuesta. Los tamaños de los datos enviados y recibidos
 	//deben ser previamente conocidos
@@ -71,8 +65,8 @@ public slots:
 	void closePort();
 	//Para cerrar la conexión
 
-	void queueCommand(Command);
-	void queueCommand(NetworkNode::Command, QVector<uchar>, uint);
+	void queueQuery(NetworkNode::Query);
+	void queueQuery(NetworkNode::Command, QVector<uchar>, uint);
 	//Agregar un comando a la cola
 };
 

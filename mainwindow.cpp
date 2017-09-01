@@ -42,16 +42,17 @@ MainWindow::MainWindow(QWidget *parent) :
 	connect(&serial_manager, &SerialManager::disconnected,
 	        &bandwidth_timer, &QTimer::stop);
 	connect(&bandwidth_timer, &QTimer::timeout, [=] () {
-		serial_manager.queueCommand(NetworkNode::CMD_GET_BANDWIDTH_IN, {}, 4);
-		serial_manager.queueCommand(NetworkNode::CMD_GET_BANDWIDTH_OUT, {}, 4);
+		serial_manager.queueQuery(NetworkNode::CMD_GET_BYTES_IN, {}, 4);
+		serial_manager.queueQuery(NetworkNode::CMD_GET_BYTES_OUT, {}, 4);
 	});
 
 	//Graficos
 	latency_bar_chart = new LatencyBarChart();
+
 	latency_time_chart = new TimeChart(16);
+
 	bandwidth_time_chart = new TimeChart(2);
 	bandwidth_time_chart->legend->setVisible(true);
-	//qobject_cast<QCPPlottableLegendItem*>(bandwidth_time_chart->legend->item(0))->plottable()->setName("Hola");
 	bandwidth_time_chart->graph(0)->setName("Entrada");
 	bandwidth_time_chart->graph(1)->setName("Salida");
 	bandwidth_time_chart->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft|Qt::AlignTop);
@@ -63,14 +64,12 @@ MainWindow::MainWindow(QWidget *parent) :
 	replot_timer.setInterval(1000 / 30);
 	replot_timer.start();
 	connect(&replot_timer, &QTimer::timeout, [=] () {
-		if (latency_time_chart->isVisible()) {
+		if (latency_bar_chart->isVisible())
+			latency_bar_chart->replot(QCustomPlot::rpQueuedReplot);
+		if (latency_time_chart->isVisible())
 			latency_time_chart->replot(QCustomPlot::rpQueuedReplot);
-		}
-	});
-	connect(&replot_timer, &QTimer::timeout, [=] () {
-		if (bandwidth_time_chart->isVisible()) {
+		if (bandwidth_time_chart->isVisible())
 			bandwidth_time_chart->replot(QCustomPlot::rpQueuedReplot);
-		}
 	});
 
 	ui->comboBox_chartType->addItem("Barras");
@@ -98,9 +97,9 @@ MainWindow::MainWindow(QWidget *parent) :
 
 	//Configuración del dispositivo
 	connect(ui->spinBox_packetInterval, QOverload<int>::of(&QSpinBox::valueChanged),
-	        [this] (int value) { serial_manager.queueCommand(NetworkNode::CMD_SET_PACKET_INTERVAL, serialize<ushort>(value), 0); });
+	        [this] (int value) { serial_manager.queueQuery(NetworkNode::CMD_SET_PACKET_INTERVAL, serialize<ushort>(value), 0); });
 	connect(ui->spinBox_packetSize, QOverload<int>::of(&QSpinBox::valueChanged),
-	        [this] (int value) { serial_manager.queueCommand(NetworkNode::CMD_SET_PACKET_SIZE, serialize<ushort>(value), 0); });
+	        [this] (int value) { serial_manager.queueQuery(NetworkNode::CMD_SET_PACKET_SIZE, serialize<ushort>(value), 0); });
 	connect(ui->spinBox_dst, QOverload<int>::of(&QSpinBox::valueChanged),
 	        this, &MainWindow::updatePacketDst);
 	connect(ui->checkBox_broadcast, &QCheckBox::stateChanged,
@@ -228,13 +227,13 @@ void MainWindow::deviceResponseReceived(NetworkNode::Command command, QVector<uc
 		ui->checkBox_content->setChecked(data[0] == 0x01);
 		break;
 
-	case NetworkNode::CMD_GET_BANDWIDTH_IN:
+	case NetworkNode::CMD_GET_BYTES_IN:
 		value = deserialize<uint>(data) * 8 * 10;
 		ui->label_bandwidth_in_bottom->setText(metricPrefix(value) + "b/s");
 		bandwidth_time_chart->addData(0, value);
 		break;
 
-	case NetworkNode::CMD_GET_BANDWIDTH_OUT:
+	case NetworkNode::CMD_GET_BYTES_OUT:
 		value = deserialize<uint>(data) * 8 * 10;
 		ui->label_bandwidth_out_bottom->setText(metricPrefix(value) + "b/s");
 		bandwidth_time_chart->addData(1, value);
@@ -259,7 +258,7 @@ void MainWindow::updatePacketDst() {
 		dst = ui->spinBox_dst->value();
 	}
 
-	serial_manager.queueCommand(NetworkNode::CMD_SET_PACKET_DST, {dst}, 0);
+	serial_manager.queueQuery(NetworkNode::CMD_SET_PACKET_DST, {dst}, 0);
 }
 
 
@@ -269,20 +268,20 @@ void MainWindow::updatePacketContent() {
 
 	ui->pushButton_content->setEnabled(custom_packet);
 
-	serial_manager.queueCommand(NetworkNode::CMD_SET_CUSTOM_PACKET, {custom_packet}, 0);
+	serial_manager.queueQuery(NetworkNode::CMD_SET_CUSTOM_PACKET, {custom_packet}, 0);
 }
 
 
 //Realiza la lectura de los registros del dispositivo
 void MainWindow::requestDeviceInfo() {
-	serial_manager.queueCommand(NetworkNode::CMD_GET_ID, {}, 1);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_VERSION, {}, 2);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_PRECISION, {}, 4);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_MAC_ADDRESS, {}, 6);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_PACKET_SIZE, {}, 2);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_PACKET_INTERVAL, {}, 2);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_PACKET_DST, {}, 1);
-	serial_manager.queueCommand(NetworkNode::CMD_GET_CUSTOM_PACKET, {}, 1);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_ID, {}, 1);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_VERSION, {}, 2);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_PRECISION, {}, 4);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_MAC_ADDRESS, {}, 6);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_PACKET_SIZE, {}, 2);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_PACKET_INTERVAL, {}, 2);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_PACKET_DST, {}, 1);
+	serial_manager.queueQuery(NetworkNode::CMD_GET_CUSTOM_PACKET, {}, 1);
 }
 
 
@@ -294,9 +293,9 @@ void MainWindow::loadPacketData() {
 
 	if (in_file.open(QIODevice::ReadOnly))
 	{
-		SerialManager::Command command;
-		command.command = NetworkNode::Command::CMD_LOAD_CUSTOM_DATA;
-		command.response_length = 0;
+		NetworkNode::Query query;
+		query.command = NetworkNode::Command::CMD_LOAD_CUSTOM_DATA;
+		query.response_length = 0;
 
 		int filesize = in_file.size();
 		if (filesize > 1514)
@@ -304,14 +303,14 @@ void MainWindow::loadPacketData() {
 			filesize = 1514;
 		}
 
-		command.data.resize(filesize + 2);
+		query.data.resize(filesize + 2);
 
-		command.data[0] = filesize >> 8 & 0xFF;
-		command.data[1] = filesize & 0xFF;
+		query.data[0] = filesize >> 8 & 0xFF;
+		query.data[1] = filesize & 0xFF;
 
-		in_file.read(reinterpret_cast<char*>(&command.data[2]), filesize);
+		in_file.read(reinterpret_cast<char*>(&query.data[2]), filesize);
 
-		serial_manager.queueCommand(command);
+		serial_manager.queueQuery(query);
 	}
 }
 
@@ -378,7 +377,7 @@ void MainWindow::measurementReceived(uint value, uint sequence, uint node)
 	//                 "desde " + QString::number(node);
 
 	//ui->statusBar->showMessage(status);
-	latency_bar_chart->updateLatency(value * device_precision, sequence, node);
+	latency_bar_chart->addData(value * device_precision, sequence, node);
 	latency_time_chart->addData(node, (double)(value * device_precision));
 
 	if (log_status)

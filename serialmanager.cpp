@@ -5,8 +5,7 @@
 
 #include "networknode.h"
 
-SerialManager::SerialManager()
-{
+SerialManager::SerialManager() {
 	serial_port = nullptr;
 
 	/*refresh_timer.setInterval(2000);
@@ -16,8 +15,8 @@ SerialManager::SerialManager()
 	connect(&refresh_timer, SIGNAL(timeout()), this, SLOT(readRegister()));*/
 }
 
-void SerialManager::run()
-{
+
+void SerialManager::run() {
 	serial_port = new QSerialPort();
 
 	serial_port->setPortName(port_name);
@@ -46,17 +45,17 @@ void SerialManager::run()
 		serial_port->clear();
 
 		//Enviar comandos en cola
-		command_queue_mutex.lock();
-		while(command_queue.length() > 0)
+		query_queue_mutex.lock();
+		while(query_queue.length() > 0)
 		{
 			QVector<uchar> response;
-			sendCommand(command_queue[0], &response);
+			sendQuery(query_queue[0], &response);
 
 			if (response.length() > 0)
-				emit commandResponse(command_queue[0].command, response);
-			command_queue.pop_front();
+				emit commandResponse(query_queue[0].command, response);
+			query_queue.pop_front();
 		}
-		command_queue_mutex.unlock();
+		query_queue_mutex.unlock();
 
 		//Actualizar registros de ser necesario
 		/*if (check_device_flag)
@@ -102,94 +101,58 @@ void SerialManager::closePort()
 }
 
 
-/*void SerialManager::checkDevice()
-{
-	if (serial_port->isOpen())
-	{
-		QVector<uchar> response;
-		response.fill(0, 8);
-
-		if (sendCommand(NetworkNode::CMD_GET_ID, nullptr, 0, (char*) &response[0], 1))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_ID, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_VERSION, nullptr, 0, (char*) &response[0], 2))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_VERSION, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_PRECISION, nullptr, 0, (char*) &response[0], 4))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_PRECISION, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_MAC_ADDRESS, nullptr, 0, (char*) &response[0], 6))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_MAC_ADDRESS, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_PACKET_SIZE, nullptr, 0, (char*) &response[0], 2))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_PACKET_SIZE, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_PACKET_INTERVAL, nullptr, 0, (char*) &response[0], 2))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_PACKET_INTERVAL, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_PACKET_DST, nullptr, 0, (char*) &response[0], 1))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_PACKET_DST, response);
-
-		if (sendCommand(NetworkNode::CMD_GET_CUSTOM_PACKET, nullptr, 0, (char*) &response[0], 1))
-			emit deviceRegisterUpdated(NetworkNode::REGISTER_CUSTOM_PACKET, response);
-	}
-}*/
-
-
-void SerialManager::queueCommand(Command command)
-{
-	command_queue_mutex.lock();
-	command_queue.append(command);
-	command_queue_mutex.unlock();
+void SerialManager::queueQuery(NetworkNode::Query query) {
+	query_queue_mutex.lock();
+	query_queue.append(query);
+	query_queue_mutex.unlock();
 }
 
 
-void SerialManager::queueCommand(NetworkNode::Command command, QVector<uchar> data, uint response_length) {
-	queueCommand({command, data, response_length});
+void SerialManager::queueQuery(NetworkNode::Command command, QVector<uchar> data, uint response_length) {
+	queueQuery({command, data, response_length});
 }
 
 
-bool SerialManager::sendCommand(Command command, QVector<uchar>* response)
-{
+bool SerialManager::sendQuery(NetworkNode::Query query, QVector<uchar>* response) {
 	if (!serial_port->isOpen())
 		return false;
 
 	//Enviar byte correspondiente al comando
-	uchar command_byte = (uchar)command.command;
+	uchar command_byte = (uchar)query.command;
 	serial_port->write(reinterpret_cast<char*>(&command_byte), 1);
 	if (!(serial_port->waitForBytesWritten(100)))
 	{
-		qDebug() << "Command [" << command.command << "]: Couldn't write command";
+		qDebug() << "Command [" << query.command << "]: Couldn't write command";
 		return false;
 	}
 
 	//Enviar los datos asociados al comando
-	if (command.data.length() != 0)
+	if (query.data.length() != 0)
 	{
-		serial_port->write(reinterpret_cast<char*>(&command.data[0]), command.data.length());
+		serial_port->write(reinterpret_cast<char*>(&query.data[0]), query.data.length());
 		if (!serial_port->waitForBytesWritten(100))
 		{
-			qDebug() << "Command [" << command.command << "]: Couldn't write data";
+			qDebug() << "Command [" << query.command << "]: Couldn't write data";
 			return false;
 		}
 	}
 
 	//Recibir respuesta del comando
-	if (response != nullptr && command.response_length != 0)
+	if (response != nullptr && query.response_length != 0)
 	{
-		response->resize(command.response_length);
+		response->resize(query.response_length);
 
 		quint32 bytes_read = 0;
 
-		while (bytes_read < command.response_length)
+		while (bytes_read < query.response_length)
 		{
 			if (serial_port->waitForReadyRead(100))
 			{
-				bytes_read += serial_port->read(reinterpret_cast<char*>(&(*response)[0]) + bytes_read, command.response_length - bytes_read);
+				bytes_read += serial_port->read(reinterpret_cast<char*>(&(*response)[0]) + bytes_read, query.response_length - bytes_read);
 			}
 			else
 			{
-				qDebug() << "Command [" << command.command << "]: Didn't get response (timeout)";
+				qDebug() << "Command [" << query.command << "]: Didn't get response (timeout)";
 				return false;
 			}
 		}
@@ -199,14 +162,13 @@ bool SerialManager::sendCommand(Command command, QVector<uchar>* response)
 }
 
 
-void SerialManager::readMeasurements(bool send_signal)
-{
-	Command command;
-	command.command = NetworkNode::Command::CMD_MEASUREMENTS;
-	command.response_length = 2;
+void SerialManager::readMeasurements(bool send_signal) {
+	NetworkNode::Query query;
+	query.command = NetworkNode::Command::CMD_MEASUREMENTS;
+	query.response_length = 2;
 	QVector<uchar> response;
 
-	if (sendCommand(command, &response))
+	if (sendQuery(query, &response))
 	{
 		uint size = (response[0] << 8) + response[1];
 
